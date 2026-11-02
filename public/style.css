@@ -100,7 +100,7 @@ nav button:hover { border-color: var(--line); background: var(--glass); color: v
 }
 #orb-spot {
   flex: none;
-  width: clamp(120px, 27vh, 250px);
+  width: clamp(104px, 23vh, 240px);
   aspect-ratio: 1;
   margin-bottom: clamp(36px, 8vh, 76px);
 }
@@ -291,12 +291,17 @@ dialog .result { margin: 12px 0 0; color: var(--ink); }
 
 @media (max-width: 520px) {
   .top { padding: 12px 16px; }
-  #orb-spot { margin-bottom: 30px; }
+  #orb-spot { width: clamp(96px, 17vh, 150px); margin-bottom: 30px; }
+  .ideas { gap: 7px; margin-top: 18px; }
+  .ideas button { padding: 6px 12px; font-size: 13px; }
   .message.assistant { font-size: 20px; }
 }
-@media (max-height: 600px) {
-  #orb-spot { width: 90px; margin-bottom: 18px; }
-  #welcome h1 { font-size: 40px; }
+@media (max-height: 700px) {
+  #orb-spot { width: 76px; margin-bottom: 16px; }
+  #welcome h1 { margin-bottom: 8px; font-size: 40px; }
+  #welcome p { font-size: 14px; }
+  .ideas { gap: 7px; margin-top: 12px; }
+  .ideas button { padding: 5px 12px; font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .status, .box::before, .message { animation: none; }
