@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Orin</title>
+  <meta name="theme-color" content="#f7f4ee">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span id="bot-name">Orin</span></div>
+    <nav>
+      <button id="devices" type="button">Devices</button>
+      <button id="new-chat" type="button">New chat</button>
+    </nav>
+  </header>
+
+  <main id="log" aria-live="polite">
+    <section id="welcome">
+      <h1>What are you thinking about?</h1>
+      <p>I can reason things through, search the web, and remember what matters to you across your devices.</p>
+      <div class="ideas">
+        <button type="button">Explain a hard idea simply</button>
+        <button type="button">Help me plan my week</button>
+        <button type="button">What happened in the news today?</button>
+      </div>
+    </section>
+  </main>
+
+  <form id="composer">
+    <div class="box">
+      <textarea id="input" rows="1" maxlength="8000" placeholder="Message" aria-label="Message" enterkeyhint="send"></textarea>
+      <button id="send" type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </form>
+
+  <dialog id="device-dialog">
+    <h2>Connect your devices</h2>
+    <p>Devices that share a code share one conversation and the same notes.</p>
+    <button id="make-code" class="wide" type="button">Get a code for another device</button>
+    <p id="code-result" class="result" hidden></p>
+    <hr>
+    <form id="join-form">
+      <label for="join-code">Have a code from another device?</label>
+      <div class="row">
+        <input id="join-code" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off">
+        <button type="submit">Connect</button>
+      </div>
+    </form>
+    <p id="join-result" class="result" hidden></p>
+    <button id="close-dialog" class="plain" type="button">Close</button>
+  </dialog>
+
+  <script src="markdown.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
