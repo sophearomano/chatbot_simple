@@ -88,7 +88,7 @@ async function chat(req, res) {
     return json(res, 200, await handleMessage(base));
   }
 
-  // Leaving the page or pressing stop ends the turn, so nobody pays for unread words.
+  // Leaving the page or pressing stop ends the turn, and nothing is saved.
   const abort = new AbortController();
   res.on('close', () => {
     if (!res.writableFinished) abort.abort();
@@ -99,7 +99,6 @@ async function chat(req, res) {
     ...base,
     signal: abort.signal,
     onText: (delta) => emit('text', { delta }),
-    onStatus: (status) => emit('status', { status }),
   });
   if (!res.writableEnded && !res.destroyed) {
     emit('done', result);

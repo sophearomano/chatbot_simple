@@ -28,15 +28,14 @@ before(async () => {
       ...process.env,
       PORT: String(PORT),
       DATA_DIR: dataDir,
-      ANTHROPIC_API_KEY: 'test-key',
-      ANTHROPIC_BASE_URL: fakes.url,
       WHATSAPP_TOKEN: 'wa-token',
       WHATSAPP_PHONE_NUMBER_ID: '555',
       WHATSAPP_VERIFY_TOKEN: 'verify-me',
       WHATSAPP_APP_SECRET: APP_SECRET,
       WHATSAPP_API_BASE: fakes.url,
-      MESSAGES_PER_HOUR: '12',
+      MESSAGES_PER_HOUR: '30',
       IP_MESSAGES_PER_HOUR: '1000',
+      TYPING_MS: '20',
     },
     stdio: 'ignore',
   });
@@ -78,94 +77,44 @@ const inbound = (from, id, text) => ({
   entry: [{ changes: [{ value: { messages: [{ from, id, type: 'text', text: { body: text } }] } }] }],
 });
 
-test('sends the right model, thinking, fallback and compaction settings', async () => {
+test('answers with no keys and turns the words around', async () => {
   const token = await newDevice();
-  const reply = await say(token, 'hello');
-  assert.equal(reply.text, 'Echo: hello');
-  const { body, headers } = fakes.claudeRequests.at(-1);
-  assert.equal(body.model, 'claude-opus-5-5');
-  assert.deepEqual(body.thinking, { type: 'adaptive' });
-  assert.equal(body.output_config.effort, 'high');
-  assert.equal(body.fallbacks, 'default');
-  assert.equal(body.stream, true);
-  assert.deepEqual(body.cache_control, { type: 'ephemeral' });
-  assert.equal(body.context_management.edits[0].type, 'compact_20260112');
-  assert.match(headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
-  assert.match(headers['anthropic-beta'], /compact-2026-01-12/);
-  assert.ok(body.tools.some((tool) => tool.type === 'web_search_20260209'));
-  assert.equal(body.temperature, undefined);
+  const reply = await say(token, 'I am worried about my exam');
+  assert.equal(reply.status, 200);
+  assert.ok(reply.text.length > 3);
 });
 
-test('remembers the conversation and only ever appends to it', async () => {
-  const token = await newDevice();
-  await say(token, 'first');
-  const firstHistory = fakes.claudeRequests.at(-1).body.messages;
-  await say(token, 'second');
-  const secondHistory = fakes.claudeRequests.at(-1).body.messages;
-  assert.equal(firstHistory.length, 1);
-  assert.equal(secondHistory.length, 3);
-  assert.deepEqual(secondHistory[0], firstHistory[0]);
-  assert.equal(secondHistory[1].role, 'assistant');
-});
-
-test('the time and notes travel in the user turn, not the cached system prompt', async () => {
+test('keeps the transcript in order', async () => {
   const token = await newDevice();
   await say(token, 'hello');
-  const { body } = fakes.claudeRequests.at(-1);
-  assert.match(body.messages[0].content[0].text, /<context>\nTime: .*UTC/);
-  assert.doesNotMatch(body.system[0].text, /\d{4}-\d{2}-\d{2}/);
+  await say(token, 'bye');
+  const { messages } = await fetch(`${BASE}/api/history`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+  assert.deepEqual(messages.map((m) => m.role), ['user', 'assistant', 'user', 'assistant']);
+  assert.equal(messages[0].text, 'hello');
 });
 
-test('runs the remember tool and later messages carry the note', async () => {
+test('does not repeat itself while it has something fresh to say', async () => {
   const token = await newDevice();
-  const reply = await say(token, 'remember my dog is called Pip');
-  assert.equal(reply.text, 'Done, I will keep that in mind.');
-  await say(token, 'what next');
-  const { messages } = fakes.claudeRequests.at(-1).body;
-  const context = messages.at(-1).content[0].text;
-  assert.match(context, /\[\d+\] my dog is called Pip/);
-  const result = messages.find((m) => m.content.some?.((b) => b.type === 'tool_result'));
-  assert.match(result.content[0].content, /Saved as note/);
-
-  await say(token, 'and again');
-  assert.doesNotMatch(fakes.claudeRequests.at(-1).body.messages.at(-1).content[0].text, /Saved notes/);
+  const replies = [];
+  for (let i = 0; i < 3; i++) replies.push((await say(token, 'I feel lonely')).text);
+  assert.equal(new Set(replies).size, replies.length);
 });
 
-test('resumes a paused turn without inventing a user message', async () => {
+test('brings back what it was told, and /forget erases it', async () => {
   const token = await newDevice();
-  const reply = await say(token, 'pause please');
-  assert.equal(reply.text, 'Still looking. Resumed and finished.');
-  const { messages } = fakes.claudeRequests.at(-1).body;
-  assert.deepEqual(messages.map((m) => m.role), ['user', 'assistant']);
+  await say(token, 'my garden is dying');
+  let recalled = false;
+  for (let i = 0; i < 20 && !recalled; i++) recalled = /your garden is dying/.test((await say(token, 'pizza')).text);
+  assert.equal(recalled, true);
+  assert.match((await say(token, '/forget')).text, /erased/);
+  for (let i = 0; i < 3; i++) assert.doesNotMatch((await say(token, 'pizza')).text, /garden/);
 });
 
-test('a refusal is polite and leaves the history usable', async () => {
+test('sends someone in crisis to real help', async () => {
   const token = await newDevice();
-  const reply = await say(token, 'refuse this');
-  assert.equal(reply.text, 'I am not able to help with that one.');
-  await say(token, 'hello again');
-  assert.equal(fakes.claudeRequests.at(-1).body.messages.length, 1);
-});
-
-test('an API failure saves nothing and resends the notes', async () => {
-  const token = await newDevice();
-  fakes.state.failNext = 1;
-  const reply = await say(token, 'hello');
-  assert.equal(reply.failed, true);
-  assert.match(reply.text, /not set up correctly/);
-  await say(token, 'hello again');
-  const { messages } = fakes.claudeRequests.at(-1).body;
-  assert.equal(messages.length, 1);
-  assert.match(messages[0].content[0].text, /Saved notes/);
-});
-
-test('compaction blocks are kept and notes are sent again afterwards', async () => {
-  const token = await newDevice();
-  await say(token, 'compact now');
-  await say(token, 'next');
-  const { messages } = fakes.claudeRequests.at(-1).body;
-  assert.equal(messages[1].content[0].type, 'compaction');
-  assert.match(messages.at(-1).content[0].text, /Saved notes/);
+  const { text } = await say(token, "I don't want to live, I want to kill myself");
+  assert.match(text, /findahelpline\.com/);
+  assert.match(text, /emergency/);
 });
 
 test('streams words over server-sent events', async () => {
@@ -173,12 +122,12 @@ test('streams words over server-sent events', async () => {
   const response = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ message: 'hello world', channel: 'web' }),
+    body: JSON.stringify({ message: 'bye', channel: 'web' }),
   });
   assert.match(response.headers.get('content-type'), /text\/event-stream/);
   const raw = await response.text();
   assert.ok((raw.match(/event: text/g) ?? []).length >= 3);
-  assert.match(raw, /event: done\ndata: {"text":"Echo: hello world"}/);
+  assert.match(raw, /event: done\ndata: {"text":"(Goodbye|Take care)/);
 });
 
 test('leaving mid-reply stops the turn and saves nothing', async () => {
@@ -187,7 +136,7 @@ test('leaving mid-reply stops the turn and saves nothing', async () => {
   const response = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ message: 'slow answer' }),
+    body: JSON.stringify({ message: `I am ${'very '.repeat(40)}busy` }),
     signal: controller.signal,
   });
   await response.body.getReader().read();
@@ -213,8 +162,8 @@ test('/new clears the conversation', async () => {
   const token = await newDevice();
   await say(token, 'hello');
   assert.equal((await say(token, '/new')).cleared, true);
-  await say(token, 'hello again');
-  assert.equal(fakes.claudeRequests.at(-1).body.messages.length, 1);
+  const history = await fetch(`${BASE}/api/history`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+  assert.deepEqual(history.messages, []);
 });
 
 test('rejects unknown devices and bad input', async () => {
@@ -227,7 +176,7 @@ test('rejects unknown devices and bad input', async () => {
 test('limits messages per hour for one account', async () => {
   const token = await newDevice();
   let last;
-  for (let i = 0; i < 13; i++) last = await say(token, 'count');
+  for (let i = 0; i < 31; i++) last = await say(token, 'count');
   assert.match(last.text, /short break/);
 });
 
@@ -246,29 +195,24 @@ test('WhatsApp verifies the webhook handshake', async () => {
 });
 
 test('WhatsApp rejects a forged message', async () => {
-  const before = fakes.claudeRequests.length;
   assert.equal((await whatsapp(inbound('111', 'wamid.forged', 'hello'), 'wrong-secret')).status, 401);
   await wait(100);
-  assert.equal(fakes.claudeRequests.length, before);
+  assert.equal(fakes.whatsappSent.some((m) => m.body.to === '111'), false);
 });
 
-test('WhatsApp replies, keeps the conversation and ignores redelivery', async () => {
-  assert.equal((await whatsapp(inbound('222', 'wamid.1', 'hi there'))).status, 200);
-  await until(() => fakes.whatsappSent.some((m) => m.body.text?.body === 'Echo: hi there'));
-  const sent = fakes.whatsappSent.find((m) => m.body.text?.body === 'Echo: hi there');
-  assert.equal(sent.body.to, '222');
+test('WhatsApp replies and ignores redelivery', async () => {
+  const replies = () => fakes.whatsappSent.filter((m) => m.body.to === '222' && m.body.text);
+  assert.equal((await whatsapp(inbound('222', 'wamid.1', 'bye'))).status, 200);
+  await until(() => replies().length === 1);
+  const sent = replies()[0];
+  assert.match(sent.body.text.body, /Goodbye|Take care/);
   assert.equal(sent.auth, 'Bearer wa-token');
   assert.match(sent.url, /\/v25\.0\/555\/messages/);
   assert.ok(fakes.whatsappSent.some((m) => m.body.typing_indicator?.type === 'text'));
 
-  const count = fakes.claudeRequests.length;
-  await whatsapp(inbound('222', 'wamid.1', 'hi there'));
+  await whatsapp(inbound('222', 'wamid.1', 'bye'));
   await wait(150);
-  assert.equal(fakes.claudeRequests.length, count);
-
-  await whatsapp(inbound('222', 'wamid.2', 'second'));
-  await until(() => fakes.whatsappSent.some((m) => m.body.text?.body === 'Echo: second'));
-  assert.equal(fakes.claudeRequests.at(-1).body.messages.length, 3);
+  assert.equal(replies().length, 1);
 });
 
 test('a WhatsApp number and a browser can share one conversation', async () => {
@@ -276,7 +220,7 @@ test('a WhatsApp number and a browser can share one conversation', async () => {
   await until(() => fakes.whatsappSent.some((m) => m.body.to === '333' && /code is/.test(m.body.text?.body)));
   const code = /\d{6}/.exec(fakes.whatsappSent.findLast((m) => m.body.to === '333').body.text.body)[0];
   await whatsapp(inbound('333', 'wamid.4', 'hello from whatsapp'));
-  await until(() => fakes.whatsappSent.some((m) => m.body.text?.body === 'Echo: hello from whatsapp'));
+  await until(() => fakes.whatsappSent.filter((m) => m.body.to === '333' && m.body.text).length === 2);
 
   const browser = await newDevice();
   assert.equal((await say(browser, `/link ${code}`)).linked, true);

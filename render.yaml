@@ -17,14 +17,8 @@ services:
         value: /var/data
       - key: TRUST_PROXY
         value: "1"
-      - key: ANTHROPIC_API_KEY
-        sync: false
       - key: BOT_NAME
         value: Orin
-      - key: BOT_PURPOSE
-        sync: false
-      - key: DAILY_BUDGET_USD
-        value: "5"
       - key: ACCESS_CODE
         sync: false
       - key: WHATSAPP_TOKEN

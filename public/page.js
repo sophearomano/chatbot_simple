@@ -9,6 +9,8 @@
   const CHANNEL_LABELS = { whatsapp: 'on WhatsApp', device: 'on another device' };
   let token = readToken();
   let running = null;
+  let standalone = null;
+  let ready;
 
   function readToken() {
     try { return localStorage.getItem('bot-token'); } catch { return null; }
@@ -109,7 +111,7 @@
     const body = wrap.querySelector('.body');
     const status = document.createElement('div');
     status.className = 'status';
-    status.textContent = 'Thinking';
+    status.textContent = 'Typing';
     wrap.prepend(status);
 
     let written = '';
@@ -122,31 +124,32 @@
     };
     const controller = new AbortController();
     setRunning(controller);
+    const handlers = {
+      text({ delta }) {
+        status.hidden = true;
+        written += delta;
+        frame ||= requestAnimationFrame(paint);
+      },
+      done(result) {
+        if (result.linked) location.reload();
+        if (result.cleared) reset();
+        if (result.failed) wrap.classList.add('failed');
+        if (!written && result.text) written = result.text;
+      },
+    };
     try {
-      const response = await call('api/chat', {
-        method: 'POST',
-        accept: 'text/event-stream',
-        body: JSON.stringify({ message: text, channel: 'web' }),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error((await response.json()).error);
-      await readEvents(response, {
-        text({ delta }) {
-          status.hidden = true;
-          written += delta;
-          frame ||= requestAnimationFrame(paint);
-        },
-        status({ status: label }) {
-          status.textContent = label;
-          status.hidden = false;
-        },
-        done(result) {
-          if (result.linked) location.reload();
-          if (result.cleared) reset();
-          if (result.failed) wrap.classList.add('failed');
-          if (!written && result.text) written = result.text;
-        },
-      });
+      await ready;
+      if (standalone) await standalone.stream(text, handlers, controller.signal);
+      else {
+        const response = await call('api/chat', {
+          method: 'POST',
+          accept: 'text/event-stream',
+          body: JSON.stringify({ message: text, channel: 'web' }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error((await response.json()).error);
+        await readEvents(response, handlers);
+      }
       cancelAnimationFrame(frame);
       paint();
       status.remove();
@@ -170,16 +173,37 @@
   }
 
   async function command(text) {
+    await ready;
+    if (standalone) return standalone.runCommand(text);
     const response = await call('api/chat', { method: 'POST', body: JSON.stringify({ message: text, channel: 'web' }) });
     return response.json();
   }
 
   async function loadHistory() {
+    if (standalone) {
+      for (const line of standalone.history()) addMessage(line.role, line.text);
+      return;
+    }
     if (!token) return;
     const response = await call('api/history');
     if (!response.ok) return;
     const { messages } = await response.json();
     for (const line of messages) addMessage(line.role, line.text, line.channel);
+  }
+
+  // A static host answers 404 here, and the page then runs the bot itself.
+  async function start() {
+    const response = await fetch('api/info').catch(() => null);
+    if (response?.status === 404) {
+      standalone = await import('./brain/standalone.js');
+      $('devices').hidden = true;
+    } else if (response?.ok) {
+      const { name } = await response.json();
+      document.title = name;
+      $('bot-name').textContent = name;
+      input.placeholder = `Message ${name}`;
+    }
+    await loadHistory();
   }
 
   $('composer').addEventListener('submit', (event) => {
@@ -239,12 +263,6 @@
     if (linked) location.reload();
   });
 
-  fetch('api/info').then((response) => response.json()).then(({ name }) => {
-    document.title = name;
-    $('bot-name').textContent = name;
-    input.placeholder = `Message ${name}`;
-  }).catch(() => {});
-
   refreshSend();
-  loadHistory().catch(() => {});
+  ready = start().catch(() => {});
 })();

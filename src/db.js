@@ -15,19 +15,13 @@ db.exec(`
   PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
-    created_at INTEGER NOT NULL,
-    notes_sent TEXT
+    created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS identities (
     channel TEXT NOT NULL,
     external_id TEXT NOT NULL,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     PRIMARY KEY (channel, external_id)
-  );
-  CREATE TABLE IF NOT EXISTS turns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    message TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS transcript (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,14 +41,11 @@ db.exec(`
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
   );
-  CREATE TABLE IF NOT EXISTS spend (day TEXT PRIMARY KEY, usd REAL NOT NULL);
   CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, at INTEGER NOT NULL);
-  CREATE INDEX IF NOT EXISTS turns_by_account ON turns (account_id, id);
   CREATE INDEX IF NOT EXISTS transcript_by_account ON transcript (account_id, id);
 `);
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
-const today = () => new Date().toISOString().slice(0, 10);
 
 function createAccount() {
   const id = randomUUID();
@@ -99,25 +90,8 @@ export function redeemLinkCode(code, accountId) {
   return { ok: true, same: false };
 }
 
-export const loadTurns = (accountId) =>
-  db.prepare('SELECT message FROM turns WHERE account_id = ? ORDER BY id').all(accountId).map((row) => JSON.parse(row.message));
-
-export function saveTurns(accountId, messages) {
-  const insert = db.prepare('INSERT INTO turns (account_id, message) VALUES (?, ?)');
-  db.exec('BEGIN');
-  try {
-    for (const message of messages) insert.run(accountId, JSON.stringify(message));
-    db.exec('COMMIT');
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
-}
-
 export function clearConversation(accountId) {
-  db.prepare('DELETE FROM turns WHERE account_id = ?').run(accountId);
   db.prepare('DELETE FROM transcript WHERE account_id = ?').run(accountId);
-  markNotesSent(accountId, null);
 }
 
 export function logLine(accountId, role, text, channel) {
@@ -127,27 +101,21 @@ export function logLine(accountId, role, text, channel) {
 export const readTranscript = (accountId, limit = 200) =>
   db.prepare('SELECT role, text, channel, at FROM transcript WHERE account_id = ? ORDER BY id DESC LIMIT ?').all(accountId, limit).reverse();
 
+export const recentReplies = (accountId, limit = 12) =>
+  db.prepare("SELECT text FROM transcript WHERE account_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT ?").all(accountId, limit).map((row) => row.text);
+
 export const listNotes = (accountId) =>
-  db.prepare('SELECT id, fact FROM notes WHERE account_id = ? ORDER BY id').all(accountId);
+  db.prepare('SELECT fact FROM notes WHERE account_id = ? ORDER BY id').all(accountId).map((row) => row.fact);
 
-export function addNote(accountId, fact) {
-  return Number(db.prepare('INSERT INTO notes (account_id, fact) VALUES (?, ?)').run(accountId, fact).lastInsertRowid);
+// Keeps only the newest notes, the way ELIZA keeps a short memory.
+export function keepNote(accountId, fact, limit = 20) {
+  db.prepare('DELETE FROM notes WHERE account_id = ? AND fact = ?').run(accountId, fact);
+  db.prepare('INSERT INTO notes (account_id, fact) VALUES (?, ?)').run(accountId, fact);
+  db.prepare('DELETE FROM notes WHERE account_id = ? AND id NOT IN (SELECT id FROM notes WHERE account_id = ? ORDER BY id DESC LIMIT ?)').run(accountId, accountId, limit);
 }
 
-export function removeNote(accountId, id) {
-  return db.prepare('DELETE FROM notes WHERE account_id = ? AND id = ?').run(accountId, id).changes > 0;
-}
-
-export const notesSent = (accountId) => db.prepare('SELECT notes_sent FROM accounts WHERE id = ?').get(accountId)?.notes_sent ?? null;
-
-export function markNotesSent(accountId, value) {
-  db.prepare('UPDATE accounts SET notes_sent = ? WHERE id = ?').run(value, accountId);
-}
-
-export const spentToday = () => db.prepare('SELECT usd FROM spend WHERE day = ?').get(today())?.usd ?? 0;
-
-export function addSpend(usd) {
-  db.prepare('INSERT INTO spend VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET usd = usd + excluded.usd').run(today(), usd);
+export function clearNotes(accountId) {
+  db.prepare('DELETE FROM notes WHERE account_id = ?').run(accountId);
 }
 
 // True the first time an id is seen. WhatsApp redelivers webhooks.

@@ -1,17 +1,14 @@
 # Orin
 
-One intelligent assistant that people can reach from a website, from WhatsApp and from any other device. It runs on Claude Opus 5.5, reasons before it answers, searches the web, and keeps notes about each person. Devices linked with a code share one conversation.
+A chatbot in the style of [ELIZA](https://www.masswerk.at/elizabot/), the program Joseph Weizenbaum wrote at MIT in 1966. People can reach Orin from a website, from WhatsApp and from any other device, and devices linked with a code share one conversation.
+
+Orin does not use any AI service. It looks for keywords in what you say and turns your own words back into a question, so it costs nothing to run and needs no API key. It does not understand anything: it cannot answer questions, look things up or give advice, and it only works in English.
+
+The engine in `public/brain/eliza.js` and the rules in `public/brain/script.js` were written for this project. They follow ELIZA's method and do not copy elizabot.js.
 
 ## Run it on your computer
 
-You need Node.js 24 or newer and an API key from <https://console.anthropic.com>. API use is billed separately from a Claude subscription.
-
-```
-npm install
-copy .env.example .env
-```
-
-Put your key in `.env` after `ANTHROPIC_API_KEY=`, then:
+You need Node.js 24 or newer. There is nothing to install and no key to set.
 
 ```
 npm start
@@ -19,9 +16,21 @@ npm start
 
 Open <http://localhost:3000>.
 
+## Change what it says
+
+Everything Orin says is in `public/brain/script.js`. Each rule has a pattern, a rank and some replies. Higher ranks win.
+
+```js
+{ rank: 30, match: '* i am @sad *', replies: ['How long have you felt (2)?'] }
+```
+
+In `match`, `*` stands for any words and `@sad` for any word in the `sad` synonym group. In a reply, `(2)` is the second match, turned around so that "my" becomes "your". Add `keep` to a rule to save a note that Orin can bring up later.
+
 ## Put it online
 
-The bot needs a server that stays on and keeps its files, so Vercel does not fit. `render.yaml` sets it up on Render: choose **New > Blueprint**, pick this repository, and fill in the secrets it asks for. Railway or any Node host also works if `DATA_DIR` points at a permanent disk. Without a permanent disk, every restart erases conversations and notes.
+**Website only, on Vercel.** `vercel.json` publishes the `public` folder. With no server behind it, the page runs Orin itself and saves each conversation only in that visitor's browser, so the website and the widget work, but WhatsApp and linked devices do not.
+
+**Everything, on Render.** WhatsApp and linked devices need a server that stays on and keeps its files. `render.yaml` sets it up: choose **New > Blueprint** and pick this repository. Railway or any Node host also works if `DATA_DIR` points at a permanent disk. Without a permanent disk, every restart erases conversations and notes.
 
 ## Add it to a website
 
@@ -33,7 +42,7 @@ Paste this into any page. A chat button appears in the corner.
 
 ## Connect WhatsApp
 
-**Read this first.** Since January 2026, WhatsApp's business terms forbid general-purpose AI assistants on its Business Platform. AI that serves a specific business purpose, such as customer support, sales or bookings, is allowed. Set `BOT_PURPOSE` to that purpose before going live. Check Meta's current terms, because a bot that breaks them can have its number banned.
+**Read this first.** Since January 2026, WhatsApp's business terms restrict chatbots that are not tied to a specific business purpose. Check Meta's current terms before going live, because a bot that breaks them can have its number banned.
 
 1. Create a Business app at <https://developers.facebook.com> and add the WhatsApp product.
 2. Set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, and a `WHATSAPP_VERIFY_TOKEN` you invent.
@@ -64,13 +73,14 @@ These work on every channel.
 | `/link` | Gives a 6-digit code, valid for 10 minutes |
 | `/link 123456` | Joins this device to the account that made the code |
 | `/new` | Starts a fresh conversation and keeps saved notes |
+| `/forget` | Erases the notes Orin keeps about you |
 | `/help` | Lists the commands |
 
-## Cost and limits
+## Limits and safety
 
-Claude Opus 5.5 costs $4 per million input tokens and $20 per million output tokens, and web searches cost about $0.01 each. `DAILY_BUDGET_USD` stops the bot for the day once its own estimate reaches that amount; it is $5 by default. Also set a monthly limit in the Anthropic Console, because the estimate is not your bill. `MESSAGES_PER_HOUR` and `IP_MESSAGES_PER_HOUR` limit each person and network. Set `ACCESS_CODE` to keep strangers out entirely.
+`MESSAGES_PER_HOUR` and `IP_MESSAGES_PER_HOUR` limit each person and network. Set `ACCESS_CODE` to keep strangers out entirely.
 
-To spend less, set `BOT_MODEL=claude-sonnet-5-5` or `BOT_EFFORT=medium`.
+Orin is not a therapist, and the page says so. If a message mentions suicide or self-harm, it stops playing its role and points the person to emergency services and <https://findahelpline.com>. That check is a fixed list of phrases in `public/brain/script.js`, so it will miss other wordings.
 
 ## Tests
 
@@ -78,4 +88,4 @@ To spend less, set `BOT_MODEL=claude-sonnet-5-5` or `BOT_EFFORT=medium`.
 npm test
 ```
 
-The tests run the real server and the real Anthropic SDK against local stand-ins for Claude and WhatsApp, so they need no keys and spend nothing.
+The tests run the real server against a local stand-in for WhatsApp.

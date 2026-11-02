@@ -20,13 +20,8 @@ export const config = {
   accessCode: env.ACCESS_CODE || '',
 
   botName: env.BOT_NAME || 'Orin',
-  botPurpose: env.BOT_PURPOSE || '',
-  model: env.BOT_MODEL || 'claude-opus-5-5',
-  effort: env.BOT_EFFORT || 'high',
-  maxTokens: number('MAX_TOKENS', 16000),
-  compactAt: number('COMPACT_AT_TOKENS', 60000),
+  typingMs: number('TYPING_MS', 60),
 
-  dailyBudgetUsd: number('DAILY_BUDGET_USD', 5),
   messagesPerHour: number('MESSAGES_PER_HOUR', 30),
   ipMessagesPerHour: number('IP_MESSAGES_PER_HOUR', 60),
   maxMessageChars: number('MAX_MESSAGE_CHARS', 8000),

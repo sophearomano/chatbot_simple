@@ -1,25 +1,24 @@
 // The one place every channel goes through, so a message behaves the same
 // whether it came from a browser, a phone or anything else.
-import Anthropic from '@anthropic-ai/sdk';
-import { think } from './brain.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import { config } from './config.js';
-import {
-  addSpend, clearConversation, issueLinkCode, listNotes, loadTurns, logLine, markNotesSent,
-  notesSent, redeemLinkCode, saveTurns, spentToday,
-} from './db.js';
+import { clearConversation, clearNotes, issueLinkCode, keepNote, listNotes, logLine, recentReplies, redeemLinkCode } from './db.js';
+import { compile, respond } from '../public/brain/eliza.js';
+import { script } from '../public/brain/script.js';
 import { allow } from './limits.js';
-import { contextBlock } from './prompt.js';
 
 const HELP = [
   'Commands:',
   '/new - start a fresh conversation (saved notes stay)',
+  '/forget - erase everything I noted about you',
   '/link - get a code to connect another device',
   '/link 123456 - connect this device using a code',
 ].join('\n');
 
+const bot = compile(script, config.botName);
 const queues = new Map();
 
-// Two messages from one person must not race, or the history would fork.
+// Two messages from one person must not race, or replies could interleave.
 function inTurn(accountId, work) {
   const run = (queues.get(accountId) ?? Promise.resolve()).then(work, work);
   const settled = run.catch(() => {}).finally(() => {
@@ -37,6 +36,9 @@ function runCommand(accountId, text) {
     case '/new':
       clearConversation(accountId);
       return { text: 'Fresh start. I still have your saved notes.', cleared: true };
+    case '/forget':
+      clearNotes(accountId);
+      return { text: 'Done. I have erased my notes about you.' };
     case '/link': {
       if (!argument) {
         return { text: `Your code is ${issueLinkCode(accountId)}. On the other device, send /link followed by the code within 10 minutes.` };
@@ -51,27 +53,17 @@ function runCommand(accountId, text) {
   }
 }
 
-function userContent(accountId, text, channel) {
-  // Notes are only resent when they change, or after compaction summarised them away.
-  const notes = listNotes(accountId);
-  const signature = JSON.stringify(notes);
-  const changed = notesSent(accountId) !== signature;
-  if (changed) markNotesSent(accountId, signature);
-  return [
-    { type: 'text', text: contextBlock({ channel, notes: changed ? notes : null }) },
-    { type: 'text', text },
-  ];
+// The reply is ready at once; it is sent word by word so it reads like typing.
+async function type(text, onText, signal) {
+  for (const word of text.match(/\S+\s*/g) ?? []) {
+    if (signal?.aborted) return false;
+    onText(word);
+    await delay(config.typingMs);
+  }
+  return !signal?.aborted;
 }
 
-function apology(error) {
-  if (error instanceof Anthropic.RateLimitError) return 'I am very busy right now. Please try again in a minute.';
-  if (error instanceof Anthropic.AuthenticationError) return 'My connection to my brain is not set up correctly yet.';
-  if (error instanceof Anthropic.APIError && error.status === undefined) return 'I could not reach my brain just now. Please try again.';
-  if (error instanceof Anthropic.APIError && error.status >= 500) return 'My brain is having trouble right now. Please try again shortly.';
-  return 'Something went wrong on my side. Please try again.';
-}
-
-export async function handleMessage({ accountId, text, channel, ip, onText, onStatus, signal }) {
+export async function handleMessage({ accountId, text, channel, ip, onText, signal }) {
   if (text.trim().startsWith('/')) {
     const command = runCommand(accountId, text);
     if (command) return { ...command, command: true };
@@ -82,37 +74,18 @@ export async function handleMessage({ accountId, text, channel, ip, onText, onSt
   if (ip && !allow(`ip:${ip}`, config.ipMessagesPerHour)) {
     return { text: 'Too many messages from this network. Please try again within the hour.' };
   }
-  if (spentToday() >= config.dailyBudgetUsd) {
-    return { text: 'I have reached my daily limit. Please come back tomorrow.' };
-  }
 
   return inTurn(accountId, async () => {
     try {
-      const turn = await think({
-        accountId,
-        history: loadTurns(accountId),
-        userContent: userContent(accountId, text, channel),
-        onText,
-        onStatus,
-        signal,
-      });
-      addSpend(turn.cost);
-      if (turn.refused) {
-        markNotesSent(accountId, null);
-        return { text: turn.text || 'I am not able to help with that one.' };
-      }
-
-      saveTurns(accountId, turn.added);
-      if (turn.compacted) markNotesSent(accountId, null);
+      const reply = respond(bot, text, { notes: listNotes(accountId), recent: recentReplies(accountId) });
+      if (onText && !(await type(reply.text, onText, signal))) return { text: '', aborted: true };
+      if (reply.note) keepNote(accountId, reply.note);
       logLine(accountId, 'user', text, channel);
-      logLine(accountId, 'assistant', turn.text, channel);
-      return { text: turn.text };
+      logLine(accountId, 'assistant', reply.text, channel);
+      return { text: reply.text };
     } catch (error) {
-      // A notes block that never reached the history must be sent again.
-      markNotesSent(accountId, null);
-      if (error instanceof Anthropic.APIUserAbortError) return { text: '', aborted: true };
       console.error(`Turn failed for ${channel}:`, error.message);
-      return { text: apology(error), failed: true };
+      return { text: 'Something went wrong on my side. Please try again.', failed: true };
     }
   });
 }
