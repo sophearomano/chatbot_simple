@@ -4,11 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Orin</title>
-  <meta name="theme-color" content="#f7f4ee">
+  <meta name="theme-color" content="#07050b">
+  <link rel="preload" href="fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <canvas id="orb" aria-hidden="true"></canvas>
   <header class="top">
     <div class="brand"><span class="mark" aria-hidden="true"></span><span id="bot-name">Orin</span></div>
     <nav>
@@ -19,9 +21,11 @@
 
   <main id="log" aria-live="polite">
     <section id="welcome">
-      <h1>What is on your mind?</h1>
-      <p>Tell me anything and I will ask you about it. I am a simple program in the style of ELIZA from 1966. I follow rules, I do not truly understand you, and I am not a therapist.</p>
-      <div class="ideas">
+      <div id="orb-spot" aria-hidden="true"></div>
+      <h1 aria-label="What is on your mind?"><span style="--i:0">What</span> <span style="--i:1">is</span> <span style="--i:2">on</span> <span style="--i:3">your</span> <em style="--i:4">mind?</em></h1>
+      <p class="fade" style="--at:1.5s">This is a simple chatbot.</p>
+      <p class="fade" style="--at:1.65s">This is a raw bot created within 10 minutes to show to customers.</p>
+      <div class="ideas fade" style="--at:1.85s">
         <button type="button">I feel tired today</button>
         <button type="button">My mother worries about me</button>
         <button type="button">I want a new job</button>
@@ -56,6 +60,7 @@
   </dialog>
 
   <script src="markdown.js"></script>
+  <script src="orb.js"></script>
   <script src="page.js"></script>
 </body>
 </html>

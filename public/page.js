@@ -58,6 +58,7 @@
 
   function addMessage(role, text, channel) {
     $('welcome').hidden = true;
+    orb.setChatting(true);
     const wrap = document.createElement('article');
     wrap.className = `message ${role}`;
     const body = document.createElement('div');
@@ -127,6 +128,7 @@
     const handlers = {
       text({ delta }) {
         status.hidden = true;
+        orb.excite(0.16);
         written += delta;
         frame ||= requestAnimationFrame(paint);
       },
@@ -170,6 +172,7 @@
   function reset() {
     log.querySelectorAll('.message').forEach((node) => node.remove());
     $('welcome').hidden = false;
+    orb.setChatting(false);
   }
 
   async function command(text) {
@@ -220,6 +223,7 @@
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = `${input.scrollHeight}px`;
+    orb.excite(0.12);
     refreshSend();
   });
 

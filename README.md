@@ -80,7 +80,7 @@ These work on every channel.
 
 `MESSAGES_PER_HOUR` and `IP_MESSAGES_PER_HOUR` limit each person and network. Set `ACCESS_CODE` to keep strangers out entirely.
 
-Orin is not a therapist, and the page says so. If a message mentions suicide or self-harm, it stops playing its role and points the person to emergency services and <https://findahelpline.com>. That check is a fixed list of phrases in `public/brain/script.js`, so it will miss other wordings.
+Orin is not a therapist. If a message mentions suicide or self-harm, it stops playing its role and points the person to emergency services and <https://findahelpline.com>. That check is a fixed list of phrases in `public/brain/script.js`, so it will miss other wordings.
 
 ## Tests
 
