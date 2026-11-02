@@ -7,7 +7,7 @@
   let open = false;
 
   button.setAttribute('aria-label', 'Open chat');
-  button.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:50%;cursor:pointer;background:radial-gradient(circle at 32% 30%,#f3b78f,#b4532a 62%);box-shadow:0 6px 20px rgba(0,0,0,.28)';
+  button.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:50%;cursor:pointer;background:#07050b;box-shadow:0 0 0 2px #ffc27a,0 0 18px 5px #ff6a2b,0 6px 20px rgba(0,0,0,.28)';
 
   frame.title = 'Chat';
   frame.src = `${origin}/?embed=1`;
